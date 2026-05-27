@@ -1,0 +1,20 @@
+name: Greetings
+
+on:
+  pull_request_target:
+    types: [opened]
+  issues:
+    types: [opened]
+
+jobs:
+  greeting:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: "Welcome to the **AI Surveillance System** project! :wave:\n\nThank you for opening your first issue here. As this project is part of **GSSOC**, we are thrilled to have you contribute! Please make sure to follow our `CONTRIBUTING.md` guidelines and provide as much detail as possible so we can better assist you.\n\nHappy coding! :rocket:"
+          pr-message: "Welcome to the **AI Surveillance System** project! :wave:\n\nThank you for opening your first pull request! We highly appreciate your contribution to our **GSSOC** project. A maintainer will review your code shortly. Please make sure your PR passes all checks and is linked to the relevant issue.\n\nHappy contributing! :star2:"
