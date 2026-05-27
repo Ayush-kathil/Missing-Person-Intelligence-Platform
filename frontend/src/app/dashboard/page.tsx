@@ -163,11 +163,14 @@ export default function DashboardCommandCenter() {
                 >
                   <div className="aspect-video bg-gray-200 rounded-xl mb-3 overflow-hidden relative">
                     {alert.snapshot ? (
-                      <img
-                        src={`${backendUrl}/api/snapshots/${sessionId}/${alert.snapshot}`}
-                        alt="Match Snapshot"
-                        className="w-full h-full object-cover"
-                      />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`${backendUrl}/api/snapshots/${sessionId}/${alert.snapshot}`}
+                          alt="Match Snapshot"
+                          className="w-full h-full object-cover"
+                        />
+                      </>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
                         No Image
