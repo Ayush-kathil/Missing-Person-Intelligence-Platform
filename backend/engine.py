@@ -149,9 +149,9 @@ def get_yolo_model() -> YOLO:
 def warm_up_models() -> None:
     DeepFace.build_model(FACE_MODEL_NAME)
     get_yolo_model()
-    logger.bind(event="models_warmed", face_model=FACE_MODEL_NAME, tracker=TRACKER_TYPE).info(
-        "Models warmed successfully"
-    )
+    logger.bind(
+        event="models_warmed", face_model=FACE_MODEL_NAME, tracker=TRACKER_TYPE
+    ).info("Models warmed successfully")
 
 
 def _represent_face(
@@ -302,7 +302,9 @@ def _save_match_snapshot(
     location: tuple[int, int, int, int] | None = None,
 ) -> Path:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    snapshot_path = SNAPSHOT_DIR / f"{camera_id}_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    snapshot_path = (
+        SNAPSHOT_DIR / f"{camera_id}_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    )
 
     marked_frame = frame.copy()
     marked_frame = _blur_non_target_faces(marked_frame, location)
@@ -336,7 +338,9 @@ def _save_match_snapshot(
     return snapshot_path
 
 
-def _overlaps_target(face_area: tuple[int, int, int, int], target: tuple[int, int, int, int] | None) -> bool:
+def _overlaps_target(
+    face_area: tuple[int, int, int, int], target: tuple[int, int, int, int] | None
+) -> bool:
     if target is None:
         return False
 
@@ -561,10 +565,10 @@ def analyze_video_alerts(
                         "camera_total_frames": total_frames,
                         "latest_box": list(best_match.location) if best_match else None,
                         "track_id": best_match.track_id if best_match else None,
-                        "score": round(best_match.similarity, 4) if best_match else None,
+                        "score": (
+                            round(best_match.similarity, 4) if best_match else None
+                        ),
                     }
                 )
     finally:
         cap.release()
-
-

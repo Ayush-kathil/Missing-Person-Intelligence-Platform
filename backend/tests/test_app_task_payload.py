@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 from test_support import import_backend_module
 
-
 app_module = import_backend_module("app")
 
 
@@ -47,7 +46,10 @@ class AppTaskPayloadTests(unittest.TestCase):
         self.assertIsNone(payload["error"])
 
     def test_task_payload_includes_progress_meta(self):
-        app_module.app.state.sessions["session-2"] = {"task_id": "abc", "profile": "accurate"}
+        app_module.app.state.sessions["session-2"] = {
+            "task_id": "abc",
+            "profile": "accurate",
+        }
         fake_task = FakeTask(
             state="PROGRESS",
             info={
@@ -70,7 +72,10 @@ class AppTaskPayloadTests(unittest.TestCase):
         self.assertEqual(payload["profile"], "accurate")
 
     def test_task_payload_prefers_success_result(self):
-        app_module.app.state.sessions["session-3"] = {"task_id": "done", "profile": "balanced"}
+        app_module.app.state.sessions["session-3"] = {
+            "task_id": "done",
+            "profile": "balanced",
+        }
         fake_task = FakeTask(
             state="SUCCESS",
             info={"processed_frames": 10, "total_frames": 20},
@@ -95,7 +100,10 @@ class AppTaskPayloadTests(unittest.TestCase):
         self.assertIsNone(payload["error"])
 
     def test_task_payload_sets_failed_state(self):
-        app_module.app.state.sessions["session-4"] = {"task_id": "fail", "profile": "balanced"}
+        app_module.app.state.sessions["session-4"] = {
+            "task_id": "fail",
+            "profile": "balanced",
+        }
         fake_task = FakeTask(
             state="FAILURE",
             info={"progress_percent": 42},

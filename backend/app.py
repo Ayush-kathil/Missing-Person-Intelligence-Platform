@@ -8,7 +8,16 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    UploadFile,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    BackgroundTasks,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -23,6 +32,7 @@ from logger_config import logger
 SHARED_SESSIONS_DIR = Path(os.getenv("SHARED_SESSIONS_DIR", "sessions"))
 SNAPSHOT_DIR = Path(os.getenv("MATCH_SNAPSHOT_DIR", "output/snapshots"))
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize in-memory state for active background tasks
@@ -35,6 +45,7 @@ async def lifespan(app: FastAPI):
         logger.bind(event="startup", error=str(e)).error("Model pre-loading warning")
     yield
     logger.bind(event="shutdown").info("FastAPI lifespan shutdown completed")
+
 
 app = FastAPI(title="Surveillance Analysis API", lifespan=lifespan)
 
@@ -63,53 +74,68 @@ def _save_uploaded_file(upload: UploadFile, destination: Path) -> int:
 
 # --- BACKGROUND ANALYSIS WORKER ---
 
+
 def run_analysis_sync(
     session_id: str,
     cam1_path: str,
     cam2_path: str,
     reference_path: str,
     profile: str,
-    state_dict: dict
+    state_dict: dict,
 ):
     """Synchronous worker that runs YOLO/DeepFace in the background thread."""
     state_dict["state"] = "processing"
-    
+
     try:
         with open(reference_path, "rb") as f:
             ref_bytes = f.read()
         target_encoding = engine.load_encoding_from_image(ref_bytes)
-        
+
         alerts_list = []
         progress_data = {
             "processed_frames": 0,
             "total_frames": 1,
-            "current_camera": "CAM-1"
+            "current_camera": "CAM-1",
         }
 
         def on_progress(p_data):
             state_dict["current_camera"] = p_data.get("camera", "CAM-1")
             state_dict["processed_frames"] = p_data.get("frame_index", 0)
             state_dict["total_frames"] = max(1, p_data.get("camera_total_frames", 1))
-            state_dict["progress_percent"] = int((state_dict["processed_frames"] / state_dict["total_frames"]) * 100)
+            state_dict["progress_percent"] = int(
+                (state_dict["processed_frames"] / state_dict["total_frames"]) * 100
+            )
             if p_data.get("latest_box"):
-                state_dict["latest_boxes"][state_dict["current_camera"]] = p_data["latest_box"]
+                state_dict["latest_boxes"][state_dict["current_camera"]] = p_data[
+                    "latest_box"
+                ]
 
         def on_alert(alert_data):
             state_dict["alerts_count"] += 1
 
         # Analyze CAM-1
         engine.analyze_video_alerts(
-            cam1_path, "CAM-1", target_encoding, alerts_list,
-            profile=profile, progress=progress_data,
-            progress_callback=on_progress, alert_callback=on_alert
+            cam1_path,
+            "CAM-1",
+            target_encoding,
+            alerts_list,
+            profile=profile,
+            progress=progress_data,
+            progress_callback=on_progress,
+            alert_callback=on_alert,
         )
 
         # Analyze CAM-2
         if os.path.exists(cam2_path):
             engine.analyze_video_alerts(
-                cam2_path, "CAM-2", target_encoding, alerts_list,
-                profile=profile, progress=progress_data,
-                progress_callback=on_progress, alert_callback=on_alert
+                cam2_path,
+                "CAM-2",
+                target_encoding,
+                alerts_list,
+                profile=profile,
+                progress=progress_data,
+                progress_callback=on_progress,
+                alert_callback=on_alert,
             )
 
         # Finalize
@@ -123,7 +149,9 @@ def run_analysis_sync(
         set_session(session_id, session_data)
 
     except Exception as e:
-        logger.bind(event="background_task_error", error=str(e)).error("Analysis failed")
+        logger.bind(event="background_task_error", error=str(e)).error(
+            "Analysis failed"
+        )
         state_dict["state"] = "failed"
         state_dict["error"] = str(e)
         session_data = get_session(session_id) or {}
@@ -165,7 +193,9 @@ def _task_payload(session_id: str) -> dict[str, Any]:
         "alerts": session.get("alerts") or [],
     }
 
+
 # --- ENDPOINTS ---
+
 
 @app.post("/api/analyze")
 async def analyze_surveillance(
@@ -186,7 +216,7 @@ async def analyze_surveillance(
         cam2_path = str(temp_dir / "cam2.mp4")
         reference_filename = Path(missing_image.filename or "reference.jpg").name
         reference_path = str(temp_dir / reference_filename)
-        
+
         with open(reference_path, "wb") as reference_buffer:
             reference_buffer.write(img_bytes)
 
@@ -233,13 +263,13 @@ async def analyze_surveillance(
             cam2_path,
             reference_path,
             normalized_profile,
-            app.state.active_tasks[session_id]
+            app.state.active_tasks[session_id],
         )
 
-        logger.bind(event="session_created", session_id=session_id, profile=normalized_profile).info(
-            "Session created and local background task queued"
-        )
-        
+        logger.bind(
+            event="session_created", session_id=session_id, profile=normalized_profile
+        ).info("Session created and local background task queued")
+
         return {
             "status": "success",
             "session_id": session_id,
@@ -248,7 +278,9 @@ async def analyze_surveillance(
         }
 
     except Exception as e:
-        logger.bind(event="session_create_failed", error=str(e)).exception("Session creation failed")
+        logger.bind(event="session_create_failed", error=str(e)).exception(
+            "Session creation failed"
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -259,11 +291,11 @@ async def get_video(session_id: str, cam_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     if cam_id not in ["CAM-1", "CAM-2"]:
         raise HTTPException(status_code=404, detail="Invalid camera ID")
-        
+
     video_path = session.get(cam_id)
     if not video_path or not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail="Video file not found")
-    
+
     return FileResponse(video_path, media_type="video/mp4")
 
 
@@ -319,7 +351,9 @@ async def get_snapshot(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     safe_filename = Path(filename).name
-    snapshot_path = Path(__file__).resolve().parent / "output" / "snapshots" / safe_filename
+    snapshot_path = (
+        Path(__file__).resolve().parent / "output" / "snapshots" / safe_filename
+    )
 
     if not snapshot_path.exists():
         raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -336,7 +370,10 @@ async def export_session_artifacts(session_id: str):
     payload = _task_payload(session_id)
     state = str(payload.get("state") or "pending").lower()
     if state not in {"completed", "failed", "error"}:
-        raise HTTPException(status_code=409, detail="Session export is available after analysis finishes")
+        raise HTTPException(
+            status_code=409,
+            detail="Session export is available after analysis finishes",
+        )
 
     alerts = payload.get("alerts") or []
     export_path = Path(tempfile.gettempdir()) / f"evidence_{session_id}.zip"
@@ -360,12 +397,20 @@ async def export_session_artifacts(session_id: str):
     with open(csv_path, "w", newline="", encoding="utf-8") as csv_buffer:
         writer = csv.DictWriter(
             csv_buffer,
-            fieldnames=["timestamp", "camera", "confidence_score", "video_timestamp", "track_id"],
+            fieldnames=[
+                "timestamp",
+                "camera",
+                "confidence_score",
+                "video_timestamp",
+                "track_id",
+            ],
         )
         writer.writeheader()
         writer.writerows(alerts_csv_rows)
 
-    with zipfile.ZipFile(export_path, "w", compression=zipfile.ZIP_DEFLATED) as zip_buffer:
+    with zipfile.ZipFile(
+        export_path, "w", compression=zipfile.ZIP_DEFLATED
+    ) as zip_buffer:
         reference_path = Path(str(session.get("reference") or ""))
         if reference_path.exists() and reference_path.is_file():
             zip_buffer.write(reference_path, arcname=f"reference/{reference_path.name}")
@@ -386,9 +431,9 @@ async def export_session_artifacts(session_id: str):
     except Exception:
         pass
 
-    logger.bind(event="session_export", session_id=session_id, alert_count=len(alerts)).info(
-        "Evidence export generated"
-    )
+    logger.bind(
+        event="session_export", session_id=session_id, alert_count=len(alerts)
+    ).info("Evidence export generated")
     return FileResponse(
         path=export_path,
         media_type="application/zip",

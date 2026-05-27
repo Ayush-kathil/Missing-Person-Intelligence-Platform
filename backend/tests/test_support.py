@@ -3,7 +3,6 @@ import sys
 import types
 from pathlib import Path
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
@@ -42,7 +41,10 @@ def _stub_cv2() -> None:
     cv2.VideoCapture = _Capture
     cv2.resize = lambda frame, _size: frame
     cv2.imdecode = lambda _arr, _flag: object()
-    cv2.imencode = lambda _ext, _frame: (True, types.SimpleNamespace(tobytes=lambda: b""))
+    cv2.imencode = lambda _ext, _frame: (
+        True,
+        types.SimpleNamespace(tobytes=lambda: b""),
+    )
     cv2.rectangle = lambda *_args, **_kwargs: None
     cv2.putText = lambda *_args, **_kwargs: None
     cv2.imwrite = lambda *_args, **_kwargs: True
