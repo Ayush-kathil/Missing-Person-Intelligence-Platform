@@ -1,21 +1,21 @@
 ## Description
-<!-- Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. -->
+<!-- Please include a summary of the change and the technical details. -->
 
-Fixes # (issue)
+Fixes # (issue) / GSSoC Assigned Issue
 
-## Type of change
-<!-- Please delete options that are not relevant. -->
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
+## Technical Changes
+<!-- Describe your technical implementation here. What did you change and why? -->
 
-## Checklist:
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
+## Screenshots or Videos (required for UI changes)
+<!-- Add screenshots or video recordings to help explain your changes -->
 
-## Screenshots (if applicable)
-<!-- Add screenshots to help explain your changes -->
+## Vercel Preview Deployment
+<!-- Check the Vercel bot comment below and ensure the preview deployment is working. -->
+
+## Contributor Checklist:
+- [ ] I have linked my assigned GSSoC issue above.
+- [ ] I ran `npm run lint` and `npm run format` locally, and it passed with no errors.
+- [ ] I successfully built the project locally using `npm run build`.
+- [ ] I checked the Vercel Preview Deployment link in the PR comments to ensure it works in a live environment.
+- [ ] My code follows the style guidelines of this project.
+- [ ] I have commented my code, particularly in hard-to-understand areas.

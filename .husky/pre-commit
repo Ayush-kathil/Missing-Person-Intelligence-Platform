@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running GSSoC Local Sanity Checks..."
+cd frontend && npx lint-staged

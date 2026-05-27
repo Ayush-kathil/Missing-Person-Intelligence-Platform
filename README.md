@@ -1,253 +1,155 @@
-# Surveillance System
+# AI Surveillance System
 
-A production-minded missing-person surveillance workflow built with a Next.js operator console and a FastAPI + computer vision backend.
+> **GirlScript Summer of Code (GSSoC) Edition** :star2:
 
-The platform is designed for fast operator decisions:
+A production-minded missing-person surveillance workflow built with a Next.js operator console and a FastAPI + computer vision backend. This platform is designed for fast operator decisions using video analysis, real-time bounding boxes, and PDF evidence generation.
 
-- Guided 3-step flow (photo upload -> camera uploads -> live review)
-- Real asynchronous backend analysis jobs with progress reporting
-- Profile-based detection modes (Fast, Balanced, Accurate)
-- Snapshot-backed alerts with timestamps and similarity metadata
-- Formal PDF evidence export with branding and investigator signature section
+---
 
-## Highlights
+## 📑 Table of Contents
+1. [Overview & Architecture](#overview--architecture)
+2. [Prerequisites](#prerequisites)
+3. [Local Setup & Run](#local-setup--run)
+4. [GSSoC Contribution Pipeline](#gssoc-contribution-pipeline)
+5. [The "Local Sanity Check"](#the-local-sanity-check)
+6. [Vercel Preview Deployment Guide](#vercel-preview-deployment-guide)
+7. [Project Structure](#project-structure)
 
-- Async job pipeline: backend analysis runs in background tasks per session
-- Real progress API: frontend polls true frame-processing progress
-- Profile presets: operators can choose speed vs precision tradeoff
-- Drag-and-drop uploads: photo and video stages support drop zones
-- Reset platform workflow: clears runtime state and returns user to home
-- Top-left back navigation: consistent arrow navigation in workflow pages
+---
 
-## Tech Stack
+## 🏗️ Overview & Architecture
 
-- Frontend: Next.js 16, React 19, Tailwind CSS 4
-- Backend: FastAPI, OpenCV, DeepFace, Ultralytics YOLO
-- Evidence export: jsPDF
+1. **Upload Phase**: Operator uploads a reference image + CAM-1/CAM-2 video clips.
+2. **Analysis Job**: Frontend sends files to the backend `/api/analyze` with a selected performance profile (Fast, Balanced, Accurate).
+3. **Async Workers**: Backend creates a session and starts Celery-based analysis workers.
+4. **Live Polling**: Frontend polls real-time progress and detection alerts.
+5. **Review & Export**: Operator reviews the timeline and exports a formal, branded PDF report.
 
-## Architecture
+**Tech Stack**: 
+- **Frontend**: Next.js 16, React 19, Tailwind CSS 4
+- **Backend**: FastAPI, OpenCV, DeepFace, Ultralytics YOLO
 
-1. Operator uploads reference image + CAM-1/CAM-2 videos.
-2. Frontend sends files to `/api/analyze` with selected profile.
-3. Backend creates a session and starts async analysis workers.
-4. Frontend polls:
-	 - `/api/progress/{session_id}` for real progress
-	 - `/api/alerts/{session_id}` for detections
-5. Operator reviews detections and exports a formal PDF report.
+---
 
-## User Workflow
+## ⚙️ Prerequisites
 
-### 1) Home
+Before you begin contributing, ensure your environment meets the following specifications:
 
-- Entry page with workflow overview and actions.
+| Requirement | Version | Notes |
+| --- | --- | --- |
+| **Node.js** | `v20.x` | Required for Next.js frontend development. |
+| **npm** | `v10.x` | Standard package manager (comes with Node 20). |
+| **Python** | `3.11+` | Required for the FastAPI + OpenCV backend. |
+| **Git** | `Latest` | Required for version control and Husky hooks. |
 
-### 2) Photo Upload (`/photo`)
+---
 
-- Upload or drag-and-drop a missing-person reference image.
-- Live image preview before continuing.
-- Top-left back arrow for quick navigation.
+## 💻 Local Setup & Run
 
-### 3) Video Upload (`/videos`)
-
-- Upload or drag-and-drop CAM-1 and CAM-2 clips.
-- Live preview panels for both video inputs.
-- Top-left back arrow.
-
-### 4) Review Console (`/review`)
-
-- Real backend progress bar and job state display.
-- Live stream panels and alert timeline.
-- Evidence panel with first alert timestamp visibility.
-- Formal PDF export.
-- Reset Session and Reset Platform controls.
-- Top-left back arrow.
-
-## API Reference
-
-### Health
-
-- `GET /health`
-
-### Start Analysis Job
-
-- `POST /api/analyze`
-- Form fields:
-	- `missing_image` (file)
-	- `cam1_video` (file)
-	- `cam2_video` (file)
-	- `profile` (`fast` | `balanced` | `accurate`)
-
-### Progress
-
-- `GET /api/progress/{session_id}`
-- Response includes:
-	- `state` (`pending` | `running` | `completed` | `failed`)
-	- `progress_percent`
-	- `processed_frames`
-	- `total_frames`
-	- `current_camera`
-	- `alerts_count`
-	- `profile`
-	- `error`
-
-### Alerts
-
-- `GET /api/alerts/{session_id}`
-
-### Streams
-
-- `GET /api/stream/{session_id}/{cam_id}`
-- `cam_id`: `CAM-1` or `CAM-2`
-
-### Snapshot Fetch
-
-- `GET /api/snapshots/{session_id}/{filename}`
-
-### Reset Workspace
-
-- `POST /api/system/reset-workspace`
-- Body:
-	- `session_id` (optional)
-	- `prune_outputs` (boolean)
-
-## Detection Profiles
-
-- `Fast`: prioritizes speed, lower thresholds, higher frame stride
-- `Balanced`: default operational mode
-- `Accurate`: stricter thresholds, denser evaluation
-
-Profile behavior is mapped server-side in `backend/engine.py` and can be tuned through environment variables.
-
-## Local Setup
-
-### One-time setup + run-only startup (recommended)
-
+### 1. Automated Setup (Recommended for Windows)
+If you're on Windows, simply run the PowerShell script to bootstrap the entire project:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup_system.ps1
 ```
-
-After setup is done, daily startup is run-only (no install/build):
-
+After setup is complete, you can launch the app daily using:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run_full_project.ps1
 ```
 
-### Clean full run (run-only)
+### 2. Manual Startup
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run_full_project.ps1
-```
-
-### Rebuild images (only when code/dependencies change)
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\start_app.ps1 -Build
-```
-
-### Frontend only
-
-```powershell
+**Frontend (Next.js)**
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-### Backend only
-
-```powershell
+**Backend (FastAPI)**
+```bash
 cd backend
-python -m venv ..\.venv
-..\.venv\Scripts\Activate.ps1
+python -m venv .venv
+# Activate venv:
+# Windows: .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8001
 ```
 
-## Deployment
+---
 
-### Frontend (Vercel)
+## 🚀 GSSoC Contribution Pipeline
 
-- Root directory: `frontend`
-- Install: `npm install`
-- Build: `npm run build`
-- Env:
-	- `NEXT_PUBLIC_BACKEND_URL=https://your-backend-host`
+We welcome hundreds of contributors during GSSoC! To manage this scale cleanly, we have a fully automated CI/CD pipeline. Here is exactly what happens when you open a Pull Request targeting the `main` or `dev` branches:
 
-### Backend
+1. **Dependency Caching**: Our GitHub Actions pipeline caches `npm` and `pip` dependencies for blazing fast test runs.
+2. **Code Linting & Formatting**: We run `ESLint` and `Prettier` (frontend) and `Ruff` and `Black` (backend) to ensure structural and stylistic perfection.
+3. **Type Checking**: We compile TypeScript using `tsc --noEmit` to catch any breaking type shifts.
+4. **Build Verification**: We build the Next.js app to guarantee it won't crash in production.
+5. **Vercel Preview Deployments**: Vercel will automatically spin up an ephemeral deployment of your exact PR code so maintainers can test the UI live. 
 
-Deploy FastAPI separately (VM/container/platform service) and ensure CORS/network access from frontend.
+> [!IMPORTANT]
+> All automated checks (Lint, Build, Types) **must pass** before a Project Admin will review or merge your Pull Request. 
 
-## Environment and Tuning
+---
 
-Example backend tuning knobs:
+## ✅ The "Local Sanity Check"
 
-- `MATCH_THRESHOLD`
-- `YOLO_CONFIDENCE`
-- `MAX_FRAME_WIDTH`
-- `BASE_FRAME_STRIDE`
-- `HIGH_FPS_STRIDE`
-- `MATCH_CONFIRM_FRAMES`
-- `SEGMENT_SECONDS`
+To prevent your Pull Request from failing the CI pipeline and causing delays, you must run our "Local Sanity Check" before pushing your code. We have integrated **Husky** and **lint-staged** to automatically check your code when you commit, but you can also manually verify everything.
 
-These settings control speed/accuracy equilibrium for different hardware.
+Run these explicit commands in your terminal (inside the `frontend` directory):
 
-## Project Structure
+```bash
+cd frontend
+
+# 1. Check for any ESLint warnings or errors
+npm run lint
+
+# 2. Format all your code perfectly
+npm run format
+
+# 3. Verify the app builds without crashing
+npm run build
+```
+
+If these three commands pass locally, your Pull Request is mathematically almost guaranteed to pass the GitHub Actions CI workflow! 🎉
+
+---
+
+## 🌐 Vercel Preview Deployment Guide
+
+Because this project is deployed via Vercel, every Pull Request gets its own **live preview URL**. 
+
+1. **Find the Link**: After opening your PR, scroll down to the "Checks" section. The **vercel** bot will leave a comment and a check-mark with a link saying `Deploy Preview`.
+2. **Test Live**: Click the link to view your code running on a live `.vercel.app` domain. 
+3. **Collaboration Toolbar**: On the preview site, you will see a Vercel Toolbar at the bottom of the screen. You can use this to leave comments directly on UI elements for the maintainers!
+
+*(Note: The backend API requires long-running background workers and is hosted separately from Vercel. The preview deployment specifically handles the Next.js frontend.)*
+
+---
+
+## 📁 Project Structure
 
 ```text
-backend/                   FastAPI API, async jobs, CV engine
-frontend/                  Next.js operator UI
-scripts/                   Workspace cleanup utilities
-run_full_project.ps1       Full clean + launch flow
-setup_system.ps1           One-time setup script
-start_app.ps1              Standard start script
-_archive/                  Archived legacy material
-missing_person_project/    Historical project assets/docs
+├── backend/                  # FastAPI API, Celery async jobs, CV engine
+├── frontend/                 # Next.js operator UI
+├── .github/                  # CI/CD Workflows & Issue/PR Templates
+├── vercel.json               # Root routing config for Vercel deployment
+├── setup_system.ps1          # One-time bootstrap script (Windows)
+└── run_full_project.ps1      # Standard start script
 ```
 
-## Professional Reporting Output
+---
 
-PDF export contains:
+## ❓ Troubleshooting
 
-- Branded header/footer
-- Session metadata
-- Alert-by-alert breakdown
-- Snapshot evidence
-- Investigator signature and date fields
+- **Backend offline in UI**: Verify backend is running on port 8001 and check `NEXT_PUBLIC_BACKEND_URL`.
+- **No alerts appearing**: Try `Fast` profile for earliest detection signal. Check `/api/progress/{session_id}` for `failed` state.
+- **Git Commit fails (Husky)**: If your commit is rejected by Husky, read the terminal output! It usually means you have unformatted code. Run `npm run format` inside the `frontend` folder and try committing again.
 
-## Troubleshooting
+---
 
-- Backend offline in UI:
-	- Verify backend is running on expected host/port
-	- Check `NEXT_PUBLIC_BACKEND_URL`
-- No alerts appearing:
-	- Confirm usable reference image quality
-	- Try `Fast` profile for earliest detection signal
-	- Check `/api/progress/{session_id}` for `failed` state and error text
-- Upload issues:
-	- Ensure `python-multipart` is installed in backend environment
-
-## Verification Commands
-
-```powershell
-cd frontend
-npm run build
-
-cd ..\backend
-python -m py_compile app.py engine.py
-```
-
-## Developer
-
-- Name: Ayush Kathil
-- LinkedIn: https://www.linkedin.com/in/ayushkathil/
-- GitHub: https://github.com/Ayush-kathil
-
-## Git Workflow (Signed-off)
-
-```powershell
-git status
-git add .
-git commit -s -m "Describe the change"
-git push origin main
-```
-
-The `-s` flag adds a sign-off line for clean contribution history.
+### Developed By
+- **Name**: Ayush Kathil
+- **LinkedIn**: [Ayush Kathil](https://www.linkedin.com/in/ayushkathil/)
+- **GitHub**: [@Ayush-kathil](https://github.com/Ayush-kathil)

@@ -24,3 +24,6 @@ output/
 .DS_Store
 Thumbs.db
 Desktop.ini
+celerybeat-schedule
+celerybeat-schedule.*
+.env.local
