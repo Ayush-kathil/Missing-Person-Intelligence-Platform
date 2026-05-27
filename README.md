@@ -1,155 +1,108 @@
-# AI Surveillance System
+<div align="center">
+  <img src="logo.png" alt="AI Surveillance Logo" width="300" />
+  <h1>AI Surveillance System</h1>
+  <p><strong>A GSSoC-Friendly Missing Person Detection Engine</strong></p>
+</div>
 
-> **GirlScript Summer of Code (GSSoC) Edition** :star2:
-
-A production-minded missing-person surveillance workflow built with a Next.js operator console and a FastAPI + computer vision backend. This platform is designed for fast operator decisions using video analysis, real-time bounding boxes, and PDF evidence generation.
-
----
-
-## 📑 Table of Contents
-1. [Overview & Architecture](#overview--architecture)
-2. [Prerequisites](#prerequisites)
-3. [Local Setup & Run](#local-setup--run)
-4. [GSSoC Contribution Pipeline](#gssoc-contribution-pipeline)
-5. [The "Local Sanity Check"](#the-local-sanity-check)
-6. [Vercel Preview Deployment Guide](#vercel-preview-deployment-guide)
-7. [Project Structure](#project-structure)
+Welcome to the AI Surveillance System! This project uses YOLOv12 and DeepFace to track missing persons across concurrent video feeds. We have intentionally simplified this architecture so that college students and open-source contributors can easily run the entire stack locally without relying on heavy containerization.
 
 ---
 
-## 🏗️ Overview & Architecture
+## 🚀 Prerequisites
 
-1. **Upload Phase**: Operator uploads a reference image + CAM-1/CAM-2 video clips.
-2. **Analysis Job**: Frontend sends files to the backend `/api/analyze` with a selected performance profile (Fast, Balanced, Accurate).
-3. **Async Workers**: Backend creates a session and starts Celery-based analysis workers.
-4. **Live Polling**: Frontend polls real-time progress and detection alerts.
-5. **Review & Export**: Operator reviews the timeline and exports a formal, branded PDF report.
-
-**Tech Stack**: 
-- **Frontend**: Next.js 16, React 19, Tailwind CSS 4
-- **Backend**: FastAPI, OpenCV, DeepFace, Ultralytics YOLO
+Before you begin, ensure you have the following installed on your machine:
+- **Python 3.10+** (Required for OpenCV and deep learning models)
+- **Node.js 20+** (Required for the Next.js frontend)
+- **Git**
 
 ---
 
-## ⚙️ Prerequisites
+## 🛠️ Step 1: Backend Setup (FastAPI + YOLO)
 
-Before you begin contributing, ensure your environment meets the following specifications:
+The backend processes the video feeds locally on your machine using FastAPI BackgroundTasks and stores state in a local SQLite database.
 
-| Requirement | Version | Notes |
-| --- | --- | --- |
-| **Node.js** | `v20.x` | Required for Next.js frontend development. |
-| **npm** | `v10.x` | Standard package manager (comes with Node 20). |
-| **Python** | `3.11+` | Required for the FastAPI + OpenCV backend. |
-| **Git** | `Latest` | Required for version control and Husky hooks. |
+1. **Navigate to the backend directory:**
+   ```bash
+   cd backend
+   ```
 
----
+2. **Create a virtual environment:**
+   ```bash
+   python -m venv venv
+   ```
 
-## 💻 Local Setup & Run
+3. **Activate the virtual environment:**
+   - **Windows:**
+     ```powershell
+     .\venv\Scripts\activate
+     ```
+   - **Mac/Linux:**
+     ```bash
+     source venv/bin/activate
+     ```
 
-### 1. Automated Setup (Recommended for Windows)
-If you're on Windows, simply run the PowerShell script to bootstrap the entire project:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup_system.ps1
-```
-After setup is complete, you can launch the app daily using:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run_full_project.ps1
-```
+4. **Install the dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### 2. Manual Startup
-
-**Frontend (Next.js)**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-**Backend (FastAPI)**
-```bash
-cd backend
-python -m venv .venv
-# Activate venv:
-# Windows: .venv\Scripts\activate
-# Mac/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app:app --reload --port 8001
-```
+5. **Start the backend server:**
+   ```bash
+   uvicorn app:app --reload --port 8001
+   ```
+   *The backend will now be running at `http://127.0.0.1:8001`.*
 
 ---
 
-## 🚀 GSSoC Contribution Pipeline
+## 🎨 Step 2: Frontend Setup (Next.js)
 
-We welcome hundreds of contributors during GSSoC! To manage this scale cleanly, we have a fully automated CI/CD pipeline. Here is exactly what happens when you open a Pull Request targeting the `main` or `dev` branches:
+The frontend is a beautifully designed "Soft UI" Command Center that connects to your local backend to render the video and bounding boxes.
 
-1. **Dependency Caching**: Our GitHub Actions pipeline caches `npm` and `pip` dependencies for blazing fast test runs.
-2. **Code Linting & Formatting**: We run `ESLint` and `Prettier` (frontend) and `Ruff` and `Black` (backend) to ensure structural and stylistic perfection.
-3. **Type Checking**: We compile TypeScript using `tsc --noEmit` to catch any breaking type shifts.
-4. **Build Verification**: We build the Next.js app to guarantee it won't crash in production.
-5. **Vercel Preview Deployments**: Vercel will automatically spin up an ephemeral deployment of your exact PR code so maintainers can test the UI live. 
+1. **Open a NEW terminal window** (leave the backend running) and navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
 
-> [!IMPORTANT]
-> All automated checks (Lint, Build, Types) **must pass** before a Project Admin will review or merge your Pull Request. 
+2. **Install the Node dependencies:**
+   ```bash
+   npm install
+   ```
 
----
+3. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
 
-## ✅ The "Local Sanity Check"
-
-To prevent your Pull Request from failing the CI pipeline and causing delays, you must run our "Local Sanity Check" before pushing your code. We have integrated **Husky** and **lint-staged** to automatically check your code when you commit, but you can also manually verify everything.
-
-Run these explicit commands in your terminal (inside the `frontend` directory):
-
-```bash
-cd frontend
-
-# 1. Check for any ESLint warnings or errors
-npm run lint
-
-# 2. Format all your code perfectly
-npm run format
-
-# 3. Verify the app builds without crashing
-npm run build
-```
-
-If these three commands pass locally, your Pull Request is mathematically almost guaranteed to pass the GitHub Actions CI workflow! 🎉
+4. **View the App:** Open your browser and go to [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## 🌐 Vercel Preview Deployment Guide
+## ⚠️ Troubleshooting Guide (For Windows Users)
 
-Because this project is deployed via Vercel, every Pull Request gets its own **live preview URL**. 
+Machine learning libraries can sometimes be tricky to install on Windows. If you encounter errors during `pip install -r requirements.txt` (specifically for `opencv-python` or `dlib`/`deepface`), it usually means your system is missing C++ compilers.
 
-1. **Find the Link**: After opening your PR, scroll down to the "Checks" section. The **vercel** bot will leave a comment and a check-mark with a link saying `Deploy Preview`.
-2. **Test Live**: Click the link to view your code running on a live `.vercel.app` domain. 
-3. **Collaboration Toolbar**: On the preview site, you will see a Vercel Toolbar at the bottom of the screen. You can use this to leave comments directly on UI elements for the maintainers!
+### Fix: "Microsoft Visual C++ 14.0 or greater is required"
+1. Download the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+2. Run the installer.
+3. In the installer, select the **"Desktop development with C++"** workload.
+4. Ensure the **"MSVC v143 - VS 2022 C++ x64/x86 build tools"** and **"Windows 10/11 SDK"** are checked on the right side.
+5. Click Install. Once finished, restart your terminal and try `pip install -r requirements.txt` again.
 
-*(Note: The backend API requires long-running background workers and is hosted separately from Vercel. The preview deployment specifically handles the Next.js frontend.)*
-
----
-
-## 📁 Project Structure
-
-```text
-├── backend/                  # FastAPI API, Celery async jobs, CV engine
-├── frontend/                 # Next.js operator UI
-├── .github/                  # CI/CD Workflows & Issue/PR Templates
-├── vercel.json               # Root routing config for Vercel deployment
-├── setup_system.ps1          # One-time bootstrap script (Windows)
-└── run_full_project.ps1      # Standard start script
-```
+### Fix: "ImportError: DLL load failed while importing cv2"
+This means Windows is missing media foundation libraries.
+1. Open your Windows Start Menu and search for "Media Feature Pack".
+2. Alternatively, install it via PowerShell as Administrator:
+   ```powershell
+   Enable-WindowsOptionalFeature -Online -FeatureName "MediaPlayback" -All
+   ```
 
 ---
 
-## ❓ Troubleshooting
+## 🤝 Contributing for GSSoC
 
-- **Backend offline in UI**: Verify backend is running on port 8001 and check `NEXT_PUBLIC_BACKEND_URL`.
-- **No alerts appearing**: Try `Fast` profile for earliest detection signal. Check `/api/progress/{session_id}` for `failed` state.
-- **Git Commit fails (Husky)**: If your commit is rejected by Husky, read the terminal output! It usually means you have unformatted code. Run `npm run format` inside the `frontend` folder and try committing again.
+We are thrilled to be part of the GirlScript Summer of Code! To start contributing:
+1. Fork this repository.
+2. Read the `CONTRIBUTING.md` file for our PR guidelines.
+3. Check out the Issues tab for any tasks tagged with `GSSoC` or `good first issue`.
 
----
-
-### Developed By
-- **Name**: Ayush Kathil
-- **LinkedIn**: [Ayush Kathil](https://www.linkedin.com/in/ayushkathil/)
-- **GitHub**: [@Ayush-kathil](https://github.com/Ayush-kathil)
+Happy Coding!

@@ -1,244 +1,53 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8f5f1;
-  --foreground: #000000;
-  --surface: #ffffff;
-  --surface-soft: rgba(255, 255, 255, 0.82);
-  --line: rgba(0, 0, 0, 0.12);
+@theme {
+  --color-soft-bg: #f8f9fa;
+  --color-soft-text: #2d3748;
+  --color-soft-accent: #3182ce;
+
+  --shadow-soft: 10px 10px 30px #d1d9e6, -10px -10px 30px #ffffff;
+  --shadow-soft-inset: inset 5px 5px 10px #d1d9e6, inset -5px -5px 10px #ffffff;
+
+  --radius-soft: 1.5rem; /* rounded-3xl equivalent */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-ui-sans);
-  --font-mono: var(--font-ui-mono);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  background: var(--background);
-  scroll-behavior: smooth;
-}
-
-body {
-  background:
-    radial-gradient(72rem 36rem at -10% -10%, rgba(225, 204, 179, 0.38), transparent 68%),
-    radial-gradient(64rem 28rem at 110% -10%, rgba(190, 209, 228, 0.38), transparent 64%),
-    linear-gradient(180deg, #f9f7f3 0%, #f1ece5 100%);
-  color: var(--foreground);
-  font-family: var(--font-ui-sans), "Segoe UI", sans-serif;
-  margin: 0;
-  min-height: 100vh;
-}
-
-::selection {
-  background: rgba(0, 0, 0, 0.12);
-  color: #000000;
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.32);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@layer base {
+  body {
+    background-color: var(--color-soft-bg);
+    color: var(--color-soft-text);
+    font-family:
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      Oxygen,
+      Ubuntu,
+      Cantarell,
+      "Open Sans",
+      "Helvetica Neue",
+      sans-serif;
+    margin: 0;
+    padding: 0;
   }
 }
 
-@keyframes drift {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
+@layer components {
+  .soft-container {
+    @apply bg-[#F8F9FA] rounded-[1.5rem] p-6 border-none;
+    box-shadow: var(--shadow-soft);
   }
-  50% {
-    transform: translate3d(0, -12px, 0) scale(1.02);
+
+  .soft-button {
+    @apply bg-[#F8F9FA] rounded-[1.5rem] px-6 py-3 font-semibold text-[#2D3748] transition-all duration-200 border-none;
+    box-shadow: var(--shadow-soft);
   }
-}
 
-@keyframes grid-pan {
-  0% {
-    transform: translate3d(0, 0, 0);
+  .soft-button:active {
+    box-shadow: var(--shadow-soft-inset);
   }
-  50% {
-    transform: translate3d(0, -18px, 0);
-  }
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-}
 
-@keyframes float-slow {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -16px, 0);
-  }
-}
-
-@keyframes photo-grid-pan {
-  0% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(16px, -14px, 0);
-  }
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes scan {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  15% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 0.18;
-  }
-  100% {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-}
-
-@keyframes progress-shimmer {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 200% 50%;
-  }
-}
-
-@keyframes reveal {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 24px, 0) scale(0.99);
-    filter: blur(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: blur(0);
-  }
-}
-
-.fade-in-up {
-  animation: fade-in-up 700ms ease both;
-}
-
-.animate-drift {
-  animation: drift 12s ease-in-out infinite;
-}
-
-.animate-drift-delayed {
-  animation: drift 15s ease-in-out infinite 1.2s;
-}
-
-.app-shell {
-  background: transparent;
-}
-
-.hero-grid {
-  background-image:
-    linear-gradient(to right, rgba(0, 0, 0, 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.95), transparent 78%);
-  animation: grid-pan 18s ease-in-out infinite;
-}
-
-.glass-panel {
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  border-radius: 1.35rem;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.reveal {
-  animation: reveal 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.reveal-delay-1 {
-  animation: reveal 950ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
-}
-
-.reveal-delay-2 {
-  animation: reveal 1050ms cubic-bezier(0.22, 1, 0.36, 1) 220ms both;
-}
-
-.reveal-delay-3 {
-  animation: reveal 1150ms cubic-bezier(0.22, 1, 0.36, 1) 320ms both;
-}
-
-.float-slow {
-  animation: float-slow 12s ease-in-out infinite;
-}
-
-.float-slow-delayed {
-  animation: float-slow 16s ease-in-out infinite 0.8s;
-}
-
-.photo-step-grid {
-  background-image:
-    linear-gradient(to right, rgba(0, 0, 0, 0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.055) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.8), transparent 78%);
-  animation: photo-grid-pan 22s ease-in-out infinite;
-}
-
-.scan-overlay::before {
-  content: "";
-  position: absolute;
-  inset: -20% 0;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.4) 45%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  animation: scan 2.8s ease-in-out infinite;
-}
-
-.photo-progress {
-  background-size: 200% 100%;
-  animation: progress-shimmer 1.8s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-    scroll-behavior: auto !important;
+  .glass-overlay {
+    @apply bg-white/40 backdrop-blur-md rounded-[1.5rem] border border-white/50 shadow-lg;
   }
 }

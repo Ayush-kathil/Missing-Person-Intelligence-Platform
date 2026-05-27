@@ -1,10 +1,6 @@
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
 import os
 import shutil
 import tempfile
-import subprocess
 import asyncio
 import csv
 import json
@@ -12,18 +8,28 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from celery.result import AsyncResult
-from engine import warm_up_models, yield_raw_video_frames
-from tasks import analyze_surveillance_task, celery_app
-from logger_config import logger
 from contextlib import asynccontextmanager
+import uuid
+
+# Import new SQLite DB methods
+from db import get_session, set_session, delete_session, flush_all_sessions
+import engine
+from logger_config import logger
+
+SHARED_SESSIONS_DIR = Path(os.getenv("SHARED_SESSIONS_DIR", "sessions"))
+SNAPSHOT_DIR = Path(os.getenv("MATCH_SNAPSHOT_DIR", "output/snapshots"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.bind(event="startup").info("Pre-loading AI models")
+    # Initialize in-memory state for active background tasks
+    app.state.active_tasks = {}
+    logger.bind(event="startup").info("Pre-loading AI models (YOLOv12 prioritized)")
     try:
-        warm_up_models()
+        engine.warm_up_models()
         logger.bind(event="startup").info("AI models loaded successfully")
     except Exception as e:
         logger.bind(event="startup", error=str(e)).error("Model pre-loading warning")
@@ -32,49 +38,108 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Surveillance Analysis API", lifespan=lifespan)
 
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-import uuid
-
-app.state.sessions = {}
-SHARED_SESSIONS_DIR = Path(os.getenv("SHARED_SESSIONS_DIR", ""))
-SNAPSHOT_DIR = Path(os.getenv("MATCH_SNAPSHOT_DIR", "output/snapshots"))
-
 
 def _build_session_workdir(session_id: str) -> Path:
-    if SHARED_SESSIONS_DIR:
-        session_root = SHARED_SESSIONS_DIR / session_id
-        session_root.mkdir(parents=True, exist_ok=True)
-        return session_root
-    return Path(tempfile.mkdtemp(prefix=f"session_{session_id}_"))
+    session_root = SHARED_SESSIONS_DIR / session_id
+    session_root.mkdir(parents=True, exist_ok=True)
+    return session_root
 
 
 def _save_uploaded_file(upload: UploadFile, destination: Path) -> int:
-    # Use a larger copy chunk to reduce overhead for large video files.
     upload.file.seek(0)
     with open(destination, "wb") as buffer:
         shutil.copyfileobj(upload.file, buffer, length=8 * 1024 * 1024)
     return int(destination.stat().st_size)
 
 
-def _session_task(session_id: str) -> AsyncResult | None:
-    session = app.state.sessions.get(session_id)
-    if not session:
-        return None
-    task_id = session.get("task_id")
-    if not task_id:
-        return None
-    return AsyncResult(task_id, app=celery_app)
+# --- BACKGROUND ANALYSIS WORKER ---
+
+def run_analysis_sync(
+    session_id: str,
+    cam1_path: str,
+    cam2_path: str,
+    reference_path: str,
+    profile: str,
+    state_dict: dict
+):
+    """Synchronous worker that runs YOLO/DeepFace in the background thread."""
+    state_dict["state"] = "processing"
+    
+    try:
+        with open(reference_path, "rb") as f:
+            ref_bytes = f.read()
+        target_encoding = engine.load_encoding_from_image(ref_bytes)
+        
+        alerts_list = []
+        progress_data = {
+            "processed_frames": 0,
+            "total_frames": 1,
+            "current_camera": "CAM-1"
+        }
+
+        def on_progress(p_data):
+            state_dict["current_camera"] = p_data.get("camera", "CAM-1")
+            state_dict["processed_frames"] = p_data.get("frame_index", 0)
+            state_dict["total_frames"] = max(1, p_data.get("camera_total_frames", 1))
+            state_dict["progress_percent"] = int((state_dict["processed_frames"] / state_dict["total_frames"]) * 100)
+            if p_data.get("latest_box"):
+                state_dict["latest_boxes"][state_dict["current_camera"]] = p_data["latest_box"]
+
+        def on_alert(alert_data):
+            state_dict["alerts_count"] += 1
+
+        # Analyze CAM-1
+        engine.analyze_video_alerts(
+            cam1_path, "CAM-1", target_encoding, alerts_list,
+            profile=profile, progress=progress_data,
+            progress_callback=on_progress, alert_callback=on_alert
+        )
+
+        # Analyze CAM-2
+        if os.path.exists(cam2_path):
+            engine.analyze_video_alerts(
+                cam2_path, "CAM-2", target_encoding, alerts_list,
+                profile=profile, progress=progress_data,
+                progress_callback=on_progress, alert_callback=on_alert
+            )
+
+        # Finalize
+        state_dict["state"] = "completed"
+        state_dict["alerts"] = alerts_list
+        state_dict["progress_percent"] = 100
+
+        # Persist to SQLite
+        session_data = get_session(session_id) or {}
+        session_data.update(state_dict)
+        set_session(session_id, session_data)
+
+    except Exception as e:
+        logger.bind(event="background_task_error", error=str(e)).error("Analysis failed")
+        state_dict["state"] = "failed"
+        state_dict["error"] = str(e)
+        session_data = get_session(session_id) or {}
+        session_data.update(state_dict)
+        set_session(session_id, session_data)
 
 
 def _task_payload(session_id: str) -> dict[str, Any]:
-    session = app.state.sessions.get(session_id)
+    """Builds the telemetry payload by checking in-memory active tasks first, then SQLite fallback."""
+    # Check if actively running in memory
+    active_task = app.state.active_tasks.get(session_id)
+    if active_task:
+        return active_task
+
+    # Fallback to SQLite (if completed, failed, or historical)
+    session = get_session(session_id)
     if not session:
         return {
             "state": "not_found",
@@ -87,86 +152,24 @@ def _task_payload(session_id: str) -> dict[str, Any]:
             "error": "Session not found",
         }
 
-    task = _session_task(session_id)
-    if task is None:
-        return {
-            "state": "pending",
-            "progress_percent": 0,
-            "processed_frames": 0,
-            "total_frames": 1,
-            "alerts_count": 0,
-            "alerts": [],
-            "latest_boxes": {"CAM-1": None, "CAM-2": None},
-            "error": None,
-        }
-
-    try:
-        state = str(task.state or "PENDING").lower()
-        task_info = task.info
-    except Exception as exc:
-        logger.bind(event="task_meta_decode_failed", session_id=session_id, error=str(exc)).warning(
-            "Failed to decode task metadata"
-        )
-        return {
-            "state": "failed",
-            "progress_percent": 0,
-            "processed_frames": 0,
-            "total_frames": 1,
-            "alerts_count": 0,
-            "alerts": [],
-            "latest_boxes": {"CAM-1": None, "CAM-2": None},
-            "profile": session.get("profile", "balanced"),
-            "current_camera": "CAM-1",
-            "error": f"Task metadata unavailable: {exc}",
-        }
-
-    info = task_info if isinstance(task_info, dict) else {}
-
-    payload: dict[str, Any] = {
-        "state": state,
-        "progress_percent": int(info.get("progress_percent") or 0),
-        "processed_frames": int(info.get("processed_frames") or 0),
-        "total_frames": max(1, int(info.get("total_frames") or 1)),
-        "alerts_count": int(info.get("alerts_count") or 0),
-        "latest_boxes": info.get("latest_boxes") or {"CAM-1": None, "CAM-2": None},
+    return {
+        "state": session.get("state", "pending"),
+        "progress_percent": int(session.get("progress_percent") or 0),
+        "processed_frames": int(session.get("processed_frames") or 0),
+        "total_frames": max(1, int(session.get("total_frames") or 1)),
+        "alerts_count": int(session.get("alerts_count") or 0),
+        "latest_boxes": session.get("latest_boxes") or {"CAM-1": None, "CAM-2": None},
         "profile": session.get("profile", "balanced"),
-        "current_camera": info.get("current_camera", "CAM-1"),
-        "error": info.get("error"),
-        "alerts": info.get("alerts") or [],
+        "current_camera": session.get("current_camera", "CAM-1"),
+        "error": session.get("error"),
+        "alerts": session.get("alerts") or [],
     }
 
-    if task.successful():
-        try:
-            task_result = task.result
-        except Exception as exc:
-            logger.bind(event="task_result_decode_failed", session_id=session_id, error=str(exc)).warning(
-                "Failed to decode task result"
-            )
-            task_result = {}
-        result = task_result if isinstance(task_result, dict) else {}
-        payload.update(
-            {
-                "state": str(result.get("state") or "completed"),
-                "progress_percent": int(result.get("progress_percent") or 100),
-                "processed_frames": int(result.get("processed_frames") or payload["processed_frames"]),
-                "total_frames": max(1, int(result.get("total_frames") or payload["total_frames"])),
-                "alerts_count": int(result.get("alerts_count") or 0),
-                "alerts": result.get("alerts") or [],
-                "profile": result.get("profile") or payload["profile"],
-                "error": None,
-            }
-        )
-    elif task.failed():
-        payload["state"] = "failed"
-        try:
-            payload["error"] = str(task.result)
-        except Exception as exc:
-            payload["error"] = f"Task failed and result could not be decoded: {exc}"
-
-    return payload
+# --- ENDPOINTS ---
 
 @app.post("/api/analyze")
 async def analyze_surveillance(
+    background_tasks: BackgroundTasks,
     missing_image: UploadFile = File(...),
     cam1_video: UploadFile = File(...),
     cam2_video: UploadFile = File(...),
@@ -183,6 +186,7 @@ async def analyze_surveillance(
         cam2_path = str(temp_dir / "cam2.mp4")
         reference_filename = Path(missing_image.filename or "reference.jpg").name
         reference_path = str(temp_dir / reference_filename)
+        
         with open(reference_path, "wb") as reference_buffer:
             reference_buffer.write(img_bytes)
 
@@ -195,33 +199,51 @@ async def analyze_surveillance(
         if normalized_profile not in {"fast", "balanced", "accurate"}:
             normalized_profile = "balanced"
 
-        task = analyze_surveillance_task.delay(
-            session_id=session_id,
-            cam1_path=cam1_path,
-            cam2_path=cam2_path,
-            reference_image_path=reference_path,
-            profile=normalized_profile,
-        )
+        # Initialize tracking state
+        app.state.active_tasks[session_id] = {
+            "state": "pending",
+            "progress_percent": 0,
+            "processed_frames": 0,
+            "total_frames": 1,
+            "alerts_count": 0,
+            "alerts": [],
+            "latest_boxes": {"CAM-1": None, "CAM-2": None},
+            "profile": normalized_profile,
+            "current_camera": "CAM-1",
+            "error": None,
+        }
 
-        app.state.sessions[session_id] = {
+        # Save initial session metadata to SQLite
+        session_data = {
             "CAM-1": cam1_path,
             "CAM-2": cam2_path,
             "reference": reference_path,
             "profile": normalized_profile,
-            "task_id": task.id,
             "created_at": datetime.utcnow().isoformat(),
             "cam1_size": cam1_size,
             "cam2_size": cam2_size,
         }
+        set_session(session_id, session_data)
+
+        # Trigger background task without Celery!
+        background_tasks.add_task(
+            run_analysis_sync,
+            session_id,
+            cam1_path,
+            cam2_path,
+            reference_path,
+            normalized_profile,
+            app.state.active_tasks[session_id]
+        )
+
         logger.bind(event="session_created", session_id=session_id, profile=normalized_profile).info(
-            "Session created and task queued"
+            "Session created and local background task queued"
         )
         
         return {
             "status": "success",
             "session_id": session_id,
             "profile": normalized_profile,
-            "task_id": task.id,
             "job_state": "pending",
         }
 
@@ -229,22 +251,24 @@ async def analyze_surveillance(
         logger.bind(event="session_create_failed", error=str(e)).exception("Session creation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/stream/{session_id}/{cam_id}")
-async def stream_video(session_id: str, cam_id: str):
-    if session_id not in app.state.sessions:
+
+@app.get("/api/video/{session_id}/{cam_id}")
+async def get_video(session_id: str, cam_id: str):
+    session = get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if cam_id not in ["CAM-1", "CAM-2"]:
         raise HTTPException(status_code=404, detail="Invalid camera ID")
         
-    video_path = app.state.sessions[session_id][cam_id]
+    video_path = session.get(cam_id)
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Video file not found")
     
-    return StreamingResponse(
-        yield_raw_video_frames(video_path),
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+    return FileResponse(video_path, media_type="video/mp4")
+
 
 @app.get("/api/alerts/{session_id}")
-def get_alerts(session_id: str):
+async def get_alerts(session_id: str):
     payload = _task_payload(session_id)
     return {
         "alerts": payload.get("alerts", []),
@@ -255,7 +279,7 @@ def get_alerts(session_id: str):
 
 
 @app.get("/api/progress/{session_id}")
-def get_progress(session_id: str):
+async def get_progress(session_id: str):
     payload = _task_payload(session_id)
     return {
         "state": payload.get("state", "pending"),
@@ -283,13 +307,15 @@ async def session_ws(websocket: WebSocket, session_id: str):
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         return
-    except Exception:
+    except Exception as e:
+        logger.bind(event="ws_error", error=str(e)).error("WebSocket error")
         await websocket.close(code=1011)
 
 
 @app.get("/api/snapshots/{session_id}/{filename}")
-def get_snapshot(session_id: str, filename: str):
-    if session_id not in app.state.sessions:
+async def get_snapshot(session_id: str, filename: str):
+    session = get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     safe_filename = Path(filename).name
@@ -303,7 +329,7 @@ def get_snapshot(session_id: str, filename: str):
 
 @app.get("/api/export/{session_id}")
 async def export_session_artifacts(session_id: str):
-    session = app.state.sessions.get(session_id)
+    session = get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -369,6 +395,7 @@ async def export_session_artifacts(session_id: str):
         filename=f"evidence_{session_id}.zip",
     )
 
+
 @app.get("/health")
 def read_root():
     return {"status": "Online"}
@@ -382,55 +409,18 @@ class ResetRequest(BaseModel):
 @app.post("/api/system/reset-workspace")
 async def reset_workspace(payload: ResetRequest):
     if payload.session_id:
-        session = app.state.sessions.get(payload.session_id)
-        task_id = session.get("task_id") if session else None
-        if task_id:
-            celery_app.control.revoke(task_id, terminate=True)
-        app.state.sessions.pop(payload.session_id, None)
+        # If currently running, we'd need cancellation tokens, but for student version we just clear state
+        if payload.session_id in app.state.active_tasks:
+            app.state.active_tasks[payload.session_id]["state"] = "failed"
+            app.state.active_tasks[payload.session_id]["error"] = "Cancelled"
+        delete_session(payload.session_id)
     else:
-        for session in list(app.state.sessions.values()):
-            task_id = session.get("task_id")
-            if task_id:
-                celery_app.control.revoke(task_id, terminate=True)
-        app.state.sessions.clear()
-
-    workspace_root = Path(__file__).resolve().parents[1]
-    cleanup_script = workspace_root / "scripts" / "cleanup_workspace.ps1"
-    if not cleanup_script.exists():
-        raise HTTPException(status_code=500, detail="Cleanup script not found")
-
-    command = [
-        "powershell",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        str(cleanup_script),
-        "-SkipLegacyArchive",
-    ]
-    if payload.prune_outputs:
-        command.append("-PruneOutputs")
-
-    try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            command,
-            cwd=str(workspace_root),
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="Cleanup timed out")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cleanup failed: {e}")
-
-    if result.returncode != 0:
-        error_text = (result.stderr or result.stdout or "Cleanup script exited with errors").strip()
-        raise HTTPException(status_code=500, detail=error_text)
+        for sid in app.state.active_tasks:
+            app.state.active_tasks[sid]["state"] = "failed"
+            app.state.active_tasks[sid]["error"] = "Cancelled"
+        flush_all_sessions()
 
     return {
         "status": "success",
         "message": "Workspace reset completed.",
-        "output": (result.stdout or "").strip(),
     }
