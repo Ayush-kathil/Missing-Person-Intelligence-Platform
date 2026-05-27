@@ -94,12 +94,17 @@ type WorkflowState = {
   snapshotUrl: (filename: string) => string;
 };
 
-const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8001").replace(/\/+$/, "");
+const BACKEND_URL = (
+  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8001"
+).replace(/\/+$/, "");
 const API_TIMEOUT_MS = 8000;
 
 const WorkflowContext = createContext<WorkflowState | null>(null);
 
-async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  options?: RequestInit,
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
@@ -118,6 +123,7 @@ function useObjectUrl(file: File | null) {
 
   useEffect(() => {
     if (!file) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUrl(null);
       return;
     }
@@ -182,12 +188,15 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SystemStatus>("booting");
   const [lastChecked, setLastChecked] = useState<string>("");
   const [uploadKey, setUploadKey] = useState(0);
-  const [analysisProfile, setAnalysisProfile] = useState<AnalysisProfile>("balanced");
+  const [analysisProfile, setAnalysisProfile] =
+    useState<AnalysisProfile>("balanced");
   const [backendProgress, setBackendProgress] = useState(0);
   const [jobState, setJobState] = useState<string>("idle");
   const [wsConnected, setWsConnected] = useState(false);
   const [wsReconnecting, setWsReconnecting] = useState(false);
-  const [latestBoxes, setLatestBoxes] = useState<Partial<Record<"CAM-1" | "CAM-2", LiveBox | null>>>({
+  const [latestBoxes, setLatestBoxes] = useState<
+    Partial<Record<"CAM-1" | "CAM-2", LiveBox | null>>
+  >({
     "CAM-1": null,
     "CAM-2": null,
   });
@@ -204,8 +213,17 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
   const readyToRun = Boolean(missingImage && cam1 && cam2 && !loading);
   const uploadCount = [missingImage, cam1, cam2].filter(Boolean).length;
-  const fallbackProgress = getWorkflowProgress(step, status, loading, sessionId, alerts.length, uploadCount);
-  const progress = sessionId ? Math.max(backendProgress, fallbackProgress) : fallbackProgress;
+  const fallbackProgress = getWorkflowProgress(
+    step,
+    status,
+    loading,
+    sessionId,
+    alerts.length,
+    uploadCount,
+  );
+  const progress = sessionId
+    ? Math.max(backendProgress, fallbackProgress)
+    : fallbackProgress;
 
   useEffect(() => {
     let mounted = true;
@@ -221,12 +239,16 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
           setBackendError(null);
         } else {
           setStatus("offline");
-          setBackendError("Backend health check failed. Confirm the API is running on port 8001.");
+          setBackendError(
+            "Backend health check failed. Confirm the API is running on port 8001.",
+          );
         }
       } catch {
         if (mounted) {
           setStatus("offline");
-          setBackendError("Cannot reach backend. Start the backend service and retry.");
+          setBackendError(
+            "Cannot reach backend. Start the backend service and retry.",
+          );
         }
       } finally {
         if (mounted) setLastChecked(new Date().toLocaleTimeString());
@@ -269,7 +291,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       setWsReconnecting(true);
 
       const jitterMs = Math.floor(Math.random() * 250);
-      const backoffMs = Math.min(maxBackoffMs, 500 * (2 ** Math.max(0, reconnectAttempts - 1))) + jitterMs;
+      const backoffMs =
+        Math.min(maxBackoffMs, 500 * 2 ** Math.max(0, reconnectAttempts - 1)) +
+        jitterMs;
 
       reconnectTimeoutId = window.setTimeout(() => {
         connect();
@@ -333,7 +357,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
     const pollAlerts = async () => {
       try {
-        const response = await fetchWithTimeout(`${BACKEND_URL}/api/alerts/${sessionId}`);
+        const response = await fetchWithTimeout(
+          `${BACKEND_URL}/api/alerts/${sessionId}`,
+        );
         if (!response.ok) {
           return;
         }
@@ -377,13 +403,16 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     setResetInfo(null);
 
     try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/system/reset-workspace`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetchWithTimeout(
+        `${BACKEND_URL}/api/system/reset-workspace`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ session_id: sessionId, prune_outputs: true }),
         },
-        body: JSON.stringify({ session_id: sessionId, prune_outputs: true }),
-      });
+      );
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -398,12 +427,18 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       setStep(0);
       setBackendProgress(0);
       setJobState("idle");
-      setResetInfo("Platform reset completed. Temporary files were cleaned and session state was cleared.");
+      setResetInfo(
+        "Platform reset completed. Temporary files were cleaned and session state was cleared.",
+      );
       setStatus("online");
       return true;
     } catch (resetError) {
       setStatus("offline");
-      setError(resetError instanceof Error ? resetError.message : "Failed to reset platform.");
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "Failed to reset platform.",
+      );
       return false;
     } finally {
       setResetting(false);
@@ -412,7 +447,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
   const handleRunAnalysis = async () => {
     if (!missingImage || !cam1 || !cam2) {
-      setError("Upload the missing person image plus both camera feeds before starting.");
+      setError(
+        "Upload the missing person image plus both camera feeds before starting.",
+      );
       return;
     }
 
@@ -428,21 +465,48 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     formData.append("profile", analysisProfile);
 
     try {
-      const totalPayloadBytes = Math.max(1, missingImage.size + cam1.size + cam2.size);
+      const totalPayloadBytes = Math.max(
+        1,
+        missingImage.size + cam1.size + cam2.size,
+      );
       const data = await uploadAnalyzeRequest(
         `${BACKEND_URL}/api/analyze`,
         formData,
         (loaded, total) => {
-          const safeTotal = Math.max(totalPayloadBytes, total || totalPayloadBytes);
+          const safeTotal = Math.max(
+            totalPayloadBytes,
+            total || totalPayloadBytes,
+          );
           const normalized = Math.max(0, Math.min(1, loaded / safeTotal));
           const missingRatio = missingImage.size / totalPayloadBytes;
           const cam1Ratio = cam1.size / totalPayloadBytes;
           const cam2Ratio = cam2.size / totalPayloadBytes;
 
           setUploadProgress({
-            missingImage: Math.min(100, Math.round((normalized * missingRatio * totalPayloadBytes / Math.max(1, missingImage.size)) * 100)),
-            cam1: Math.min(100, Math.round((normalized * cam1Ratio * totalPayloadBytes / Math.max(1, cam1.size)) * 100)),
-            cam2: Math.min(100, Math.round((normalized * cam2Ratio * totalPayloadBytes / Math.max(1, cam2.size)) * 100)),
+            missingImage: Math.min(
+              100,
+              Math.round(
+                ((normalized * missingRatio * totalPayloadBytes) /
+                  Math.max(1, missingImage.size)) *
+                  100,
+              ),
+            ),
+            cam1: Math.min(
+              100,
+              Math.round(
+                ((normalized * cam1Ratio * totalPayloadBytes) /
+                  Math.max(1, cam1.size)) *
+                  100,
+              ),
+            ),
+            cam2: Math.min(
+              100,
+              Math.round(
+                ((normalized * cam2Ratio * totalPayloadBytes) /
+                  Math.max(1, cam2.size)) *
+                  100,
+              ),
+            ),
             total: Math.min(100, Math.round(normalized * 100)),
           });
         },
@@ -455,10 +519,19 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       setBackendError(null);
       setStatus("online");
       setStep(3);
-      setUploadProgress({ missingImage: 100, cam1: 100, cam2: 100, total: 100 });
+      setUploadProgress({
+        missingImage: 100,
+        cam1: 100,
+        cam2: 100,
+        total: 100,
+      });
     } catch (runError) {
       setStatus("offline");
-      setError(runError instanceof Error ? runError.message : "Unexpected frontend error.");
+      setError(
+        runError instanceof Error
+          ? runError.message
+          : "Unexpected frontend error.",
+      );
     } finally {
       setLoading(false);
     }
@@ -472,7 +545,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
     setError(null);
     const logoDataUrl = await fetch("/logo.png")
-      .then(async (response) => (response.ok ? blobToDataUrl(await response.blob()) : null))
+      .then(async (response) =>
+        response.ok ? blobToDataUrl(await response.blob()) : null,
+      )
       .catch(() => null);
 
     const snapshotEntries = await Promise.all(
@@ -482,7 +557,9 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-          const response = await fetch(`${BACKEND_URL}/api/snapshots/${sessionId}/${encodeURIComponent(alert.snapshot)}`);
+          const response = await fetch(
+            `${BACKEND_URL}/api/snapshots/${sessionId}/${encodeURIComponent(alert.snapshot)}`,
+          );
           if (!response.ok) {
             return { ...alert, snapshotDataUrl: null as string | null };
           }
@@ -518,8 +595,20 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       if (logoDataUrl) {
         try {
           document.saveGraphicsState();
-          document.circle(margin + 4.5, 6, 4.15, null).clip().discardPath();
-          document.addImage(logoDataUrl, "PNG", margin - 0.2, 1.3, 9.4, 9.4, undefined, "FAST");
+          document
+            .circle(margin + 4.5, 6, 4.15, null)
+            .clip()
+            .discardPath();
+          document.addImage(
+            logoDataUrl,
+            "PNG",
+            margin - 0.2,
+            1.3,
+            9.4,
+            9.4,
+            undefined,
+            "FAST",
+          );
           document.restoreGraphicsState();
           document.setDrawColor(255, 255, 255);
           document.circle(margin + 4.5, 6, 4.15, "S");
@@ -539,14 +628,28 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     const drawFooter = () => {
       const page = document.getCurrentPageInfo().pageNumber;
       document.setDrawColor(120, 120, 120);
-      document.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+      document.line(
+        margin,
+        pageHeight - 12,
+        pageWidth - margin,
+        pageHeight - 12,
+      );
       document.setFont("helvetica", "normal");
       document.setFontSize(9);
-      document.text(`Generated: ${new Date().toLocaleString()}`, margin, pageHeight - 7);
+      document.text(
+        `Generated: ${new Date().toLocaleString()}`,
+        margin,
+        pageHeight - 7,
+      );
       document.text(`Page ${page}`, pageWidth - margin - 12, pageHeight - 7);
     };
 
-    const safeWrite = (text: string, x: number, y: number, maxWidth = contentWidth) => {
+    const safeWrite = (
+      text: string,
+      x: number,
+      y: number,
+      maxWidth = contentWidth,
+    ) => {
       const lines = document.splitTextToSize(text, maxWidth);
       document.text(lines, x, y);
       return y + lines.length * lineHeight;
@@ -572,11 +675,19 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     document.setFontSize(10);
     y = safeWrite(`Session ID: ${sessionId ?? "N/A"}`, margin, y) + 1;
     y = safeWrite(`Backend URL: ${BACKEND_URL}`, margin, y) + 1;
-    y = safeWrite(`Generated At: ${new Date().toLocaleString()}`, margin, y) + 1;
+    y =
+      safeWrite(`Generated At: ${new Date().toLocaleString()}`, margin, y) + 1;
     y = safeWrite(`Total Alerts: ${snapshotEntries.length}`, margin, y) + 1;
 
-    const avgScore = snapshotEntries.reduce((acc, item) => acc + item.score, 0) / snapshotEntries.length;
-    y = safeWrite(`Average Similarity Score: ${formatPercent(avgScore)}`, margin, y) + 5;
+    const avgScore =
+      snapshotEntries.reduce((acc, item) => acc + item.score, 0) /
+      snapshotEntries.length;
+    y =
+      safeWrite(
+        `Average Similarity Score: ${formatPercent(avgScore)}`,
+        margin,
+        y,
+      ) + 5;
 
     document.setFont("helvetica", "bold");
     document.setFontSize(12);
@@ -598,9 +709,21 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       document.setFontSize(10);
       document.text(`Camera: ${alert.camera}`, margin + 3, y + 14);
       document.text(`Timestamp: ${alert.timestamp}`, margin + 3, y + 20);
-      document.text(`Video Time: ${formatTime(alert.video_timestamp)}`, margin + 3, y + 26);
-      document.text(`Similarity Score: ${formatPercent(alert.score)}`, margin + 3, y + 32);
-      document.text(`Euclidean Distance: ${formatDecimal(alert.euclidean_distance)}`, margin + 3, y + 38);
+      document.text(
+        `Video Time: ${formatTime(alert.video_timestamp)}`,
+        margin + 3,
+        y + 26,
+      );
+      document.text(
+        `Similarity Score: ${formatPercent(alert.score)}`,
+        margin + 3,
+        y + 32,
+      );
+      document.text(
+        `Euclidean Distance: ${formatDecimal(alert.euclidean_distance)}`,
+        margin + 3,
+        y + 38,
+      );
       document.text(`Snapshot: ${alert.snapshot ?? "--"}`, margin + 3, y + 44);
 
       const imageX = margin + contentWidth - 58;
@@ -610,11 +733,24 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
       if (alert.snapshotDataUrl) {
         try {
-          document.addImage(alert.snapshotDataUrl, "JPEG", imageX, imageY, imageW, imageH, undefined, "FAST");
+          document.addImage(
+            alert.snapshotDataUrl,
+            "JPEG",
+            imageX,
+            imageY,
+            imageW,
+            imageH,
+            undefined,
+            "FAST",
+          );
         } catch {
           document.setFont("helvetica", "normal");
           document.setFontSize(9);
-          document.text("Snapshot unavailable", imageX + 4, imageY + imageH / 2);
+          document.text(
+            "Snapshot unavailable",
+            imageX + 4,
+            imageY + imageH / 2,
+          );
         }
       } else {
         document.setFont("helvetica", "normal");
@@ -646,10 +782,13 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       keywords: "surveillance,evidence,alerts,facial-match",
     });
 
-    document.save(`surveillance_evidence_${sessionId?.slice(0, 8) ?? "session"}.pdf`);
+    document.save(
+      `surveillance_evidence_${sessionId?.slice(0, 8) ?? "session"}.pdf`,
+    );
   };
 
-  const streamUrl = (camera: "CAM-1" | "CAM-2") => `${BACKEND_URL}/api/stream/${sessionId}/${camera}`;
+  const streamUrl = (camera: "CAM-1" | "CAM-2") =>
+    `${BACKEND_URL}/api/stream/${sessionId}/${camera}`;
 
   const value: WorkflowState = {
     step,
@@ -699,10 +838,15 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     handleResetPlatform,
     handleExportEvidence,
     streamUrl,
-    snapshotUrl: (filename: string) => `${BACKEND_URL}/api/snapshots/${sessionId}/${encodeURIComponent(filename)}`,
+    snapshotUrl: (filename: string) =>
+      `${BACKEND_URL}/api/snapshots/${sessionId}/${encodeURIComponent(filename)}`,
   };
 
-  return <WorkflowContext.Provider value={value}>{children}</WorkflowContext.Provider>;
+  return (
+    <WorkflowContext.Provider value={value}>
+      {children}
+    </WorkflowContext.Provider>
+  );
 }
 
 export function useWorkflow() {
@@ -740,13 +884,23 @@ async function uploadAnalyzeRequest(
       onUploadProgress(event.loaded, event.total);
     };
 
-    xhr.onerror = () => reject(new Error("Upload failed due to a network error."));
+    xhr.onerror = () =>
+      reject(new Error("Upload failed due to a network error."));
     xhr.onabort = () => reject(new Error("Upload aborted."));
 
     xhr.onload = () => {
-      const payload = (xhr.response ?? {}) as { session_id?: string; profile?: string; job_state?: string; detail?: string };
+      const payload = (xhr.response ?? {}) as {
+        session_id?: string;
+        profile?: string;
+        job_state?: string;
+        detail?: string;
+      };
       if (xhr.status < 200 || xhr.status >= 300 || !payload.session_id) {
-        reject(new Error(payload.detail || "The backend could not start the analysis."));
+        reject(
+          new Error(
+            payload.detail || "The backend could not start the analysis.",
+          ),
+        );
         return;
       }
       resolve({
